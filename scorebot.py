@@ -28,7 +28,7 @@ from Footy.MatchStates import (
 # Set the chat ID
 CHAT_ID = -701653934
 
-class BanterBot:
+class ScoreBot:
     def __init__(self) -> None:
         # Enable logging
         logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -342,8 +342,8 @@ def main() -> None:
     # Filter out a warning from dateparser
     warnings.filterwarnings('ignore', message='The localize method is no longer necessary')
 
-    # Start the banter bot
-    BanterBot()
+    # Start the score bot
+    ScoreBot()
 
 if __name__ == '__main__':
     # Call the main function

@@ -13,4 +13,4 @@ COPY . /code/
 RUN pip install -r ./requirements.txt
 
 # Run a command to ensure the container does not exit
-CMD [ "python", "banterbot.py" ]
+CMD [ "python", "scorebot.py" ]

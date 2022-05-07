@@ -1,3 +1,3 @@
 #!/bin/zsh
-docker tag banter-bot-image sschleising/banter-bot-image              
-docker push sschleising/banter-bot-image           
+docker tag score-bot-image sschleising/score-bot-image              
+docker push sschleising/score-bot-image           

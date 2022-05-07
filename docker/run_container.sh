@@ -1,3 +1,3 @@
 #!/bin/zsh
-docker rm --force banter-bot
-docker run --name banter-bot banter-bot-image
+docker rm --force score-bot
+docker run --name score-bot score-bot-image

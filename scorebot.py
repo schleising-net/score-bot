@@ -274,7 +274,7 @@ class ScoreBot:
                     # Send the message
                     self.SendMessage(context.bot, message)
 
-                    if newMatchData.status in MatchStatus.matchToBePlayedList:
+                    if newMatchData.status in MatchStatus.matchToBePlayedList and newMatchData.matchDate < datetime.now(tz=ZoneInfo('UTC')):
                         # If any matches are still in progress or yet to be started then keep requesting updates
                         requestUpdates = True
 

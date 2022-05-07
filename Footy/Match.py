@@ -157,7 +157,7 @@ class Match:
     # Convert this match into a string for printing
     def __str__(self) -> str:
         # Create a string for the match details
-        matchDetails = f'{self.matchDate.astimezone(tz=ZoneInfo("Europe/London")).strftime("%c %Z")} - {self._competition}'
+        # matchDetails = f'{self.matchDate.astimezone(tz=ZoneInfo("Europe/London")).strftime("%c %Z")} - {self._competition}'
 
         # Return the two strings separated by a new line
-        return f'{matchDetails}\n{self.GetScoreline()}'
+        return f'{self.GetScoreline()}'

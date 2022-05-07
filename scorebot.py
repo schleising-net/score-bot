@@ -262,18 +262,21 @@ class ScoreBot:
                     # Check if this is the start of the match
                     if newMatchData.matchChanges.fullTime:
                         # Send final score
-                        message = str(newMatchData)
+                        message = f'Full Time\n{str(newMatchData)}'
                     else:
-                        requestUpdates = True
                         if newMatchData.matchChanges.firstHalfStarted:
                             # Send match started
-                            message = str(newMatchData)
+                            message = f'Kick Off\n{str(newMatchData)}'
                         elif newMatchData.matchChanges.goalScored:
                             # Send score update
                             message = str(newMatchData)
 
                     # Send the message
                     self.SendMessage(context.bot, message)
+
+                    if newMatchData.status in MatchStatus.matchToBePlayedList:
+                        # If any matches are still in progress or yet to be started then keep requesting updates
+                        requestUpdates = True
 
                 if requestUpdates:
                     # Add a job to check the scores again in 10 seconds

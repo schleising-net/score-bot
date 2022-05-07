@@ -279,11 +279,11 @@ class ScoreBot:
                         requestUpdates = True
 
                 if requestUpdates:
-                    # Add a job to check the scores again in 10 seconds
-                    self.jq.run_once(self.SendScoreUpdates, 10, context=newMatchList)
+                    # Add a job to check the scores again in 6 seconds
+                    self.jq.run_once(self.SendScoreUpdates, 6, context=newMatchList)
             else:
-                # This update failed, try again in 20 seconds using the old match data as the context
-                self.jq.run_once(self.SendScoreUpdates, 20, context=oldMatchList)
+                # This update failed, try again in 6 seconds using the old match data as the context
+                self.jq.run_once(self.SendScoreUpdates, 6, context=oldMatchList)
         else:
             return
 

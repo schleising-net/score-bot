@@ -1,7 +1,6 @@
-from datetime import datetime, timedelta, time
+from datetime import datetime, time
 from pathlib import Path
-import random
-from typing import Optional
+from typing import List, Optional
 import warnings
 import sys
 import logging
@@ -11,10 +10,11 @@ from pytz import timezone
 from telegram import Bot, Update
 from telegram.ext import Updater, JobQueue, CallbackContext, CommandHandler
 
+from Footy import MatchStatus
 from Footy.Footy import Footy
 from Footy.Table import Table
 from Footy.Match import Match
-from Footy.TeamData import teamsToWatch, allTeams, supportedTeamMapping, reverseTeamLookup
+from Footy.TeamData import reverseTeamLookup
 from Footy.MatchStates import (
     Drawing,
     TeamLeadByOne, 
@@ -48,11 +48,8 @@ class ScoreBot:
         # List of chat IDs to respond to
         self.chatIdList: list[int] = []
 
-        # Set the teams we're interested in
-        teams = [team for team in teamsToWatch]
-
-        # Create a Footy object using the list of teams we're interested in
-        self.footy = Footy(teams)
+        # Create a Footy object using the list of all teams
+        self.footy = Footy()
 
         # Create the Updater and pass it your bot's token.
         # Make sure to set use_context=True to use the new context based callbacks
@@ -68,7 +65,7 @@ class ScoreBot:
 
         # Add chat IDs and list the chat IDs from another chat
         self.dp.add_handler(CommandHandler('add', self.add))
-        self.dp.add_handler(CommandHandler('list', self.list))
+        self.dp.add_handler(CommandHandler('list', self.listChats))
 
         # Add a handler to get the table
         self.dp.add_handler(CommandHandler('table', self.GetTable))
@@ -135,7 +132,7 @@ class ScoreBot:
                         print(f'Chat ID {chatId} added')
                         update.message.reply_text(f'Chat ID {chatId} added')
 
-    def list(self, update: Update, context: CallbackContext) -> None:
+    def listChats(self, update: Update, context: CallbackContext) -> None:
         # If the user is me send back the list of chats the bot is going to send to
         if update.message.from_user.first_name == 'Stephen' and update.message.from_user.last_name == 'Schleising':
             chatIds = '\n'.join(str(chatId) for chatId in self.chatIdList)
@@ -210,36 +207,34 @@ class ScoreBot:
         print('Updating matches')
 
         # Get today's matches for the teams in the list
-        self.todaysMatches = self.footy.GetMatches()
+        todaysMatches = self.footy.GetMatches()
 
         # If the download was successful, print the matches
-        if self.todaysMatches is not None:
+        if todaysMatches is not None:
+            # Create a set for the start times
+            startTimes = set()
+
             # Iterate over the matches
-            for match in self.todaysMatches:
+            for match in todaysMatches:
+                # Print the match details
                 print(match)
 
-                # Get a random time offset between 0 and 30 seconds to ensure
-                # the easy win and empty seats messages don't appear all at once
-                timeOffsetSeconds = random.randint(0, 30)
+                # If the match is not finished add the start time to a set
+                if match.status in MatchStatus.matchToBePlayedList:
+                    if match.matchDate > datetime.now(ZoneInfo('UTC')):
+                        # If the match start is in the future, schedule the request for updates
+                        startTimes.add(match.matchDate)
+                    else:
+                        # If the match has already started, request an update immediately
+                        startTimes.add(0)
 
-                # Set the context to the supported team name if My Team is not playing, otherwise set it to the opposition
-                teamContext=match.teamName
+            # Set the context to the list of matches
+            matchContext = todaysMatches
 
-                # If the match is in the future
-                if (match.matchDate - timedelta(minutes=5)) > datetime.now(ZoneInfo('UTC')):
-                    # Add a job to send a message that this should be an easy game 5 minutes before the game starts
-                    self.jq.run_once(self.SendEasyWin, match.matchDate - timedelta(minutes=5, seconds=-timeOffsetSeconds), context=teamContext)
-
+            # Iterate through the start times
+            for startTime in startTimes:
                 # Add a job to check the scores once the game starts
-                matchContext = match
-                runTime = match.matchDate if match.matchDate > datetime.now(ZoneInfo('UTC')) else 0
-                self.jq.run_once(self.SendScoreUpdates, runTime, context=matchContext)
-
-                if (match.matchDate + timedelta(minutes=5)) > datetime.now(ZoneInfo('UTC')):
-                    # If this is a home game for one of the teams we're interested in, add the empty seats message
-                    if match.homeTeam in supportedTeamMapping:
-                        # Add a job to send the empty seats message 5 minutes after the game starts
-                        self.jq.run_once(self.SendEmptySeats, match.matchDate + timedelta(minutes=5, seconds=timeOffsetSeconds), context=teamContext)
+                self.jq.run_once(self.SendScoreUpdates, startTime, context=matchContext)
         else:
             print('Download Failed')
 
@@ -252,86 +247,42 @@ class ScoreBot:
             print('No Status Change')
 
     def SendScoreUpdates(self, context: CallbackContext) -> None:
-        if context.job is not None and isinstance(context.job.context, Match):
-            oldMatchData: Match = context.job.context
-            newMatchData: Optional[Match] = self.footy.GetMatch(oldMatchData)
+        if context.job is not None and isinstance(context.job.context, list):
+            oldMatchList: list[Match] = context.job.context
+            newMatchList: Optional[list[Match]] = self.footy.GetMatches(oldMatchList=oldMatchList)
 
-            if newMatchData is not None:
-                # Get the dict details of the team we're sending a message about
-                teamDict = allTeams[newMatchData.teamName]
+            # If all matches are finished this will remain false and the loop will end
+            requestUpdates = False
 
-                message = None
+            if newMatchList:
+                # Loop through the matche updates
+                for newMatchData in newMatchList:
+                    message = None
 
-                # Check if this is the start of the match
-                if newMatchData.matchChanges.fullTime:
-                    if newMatchData.matchChanges.teamWon:
-                        message = newMatchData.bantzStrings.teamWon[random.randint(0, len(newMatchData.bantzStrings.teamWon ) - 1)].format(**teamDict)
-                    if newMatchData.matchChanges.teamLost:
-                        message = newMatchData.bantzStrings.teamLost[random.randint(0, len(newMatchData.bantzStrings.teamLost ) - 1)].format(**teamDict)
-                    if newMatchData.matchChanges.teamDrew:
-                        message = newMatchData.bantzStrings.teamDrew[random.randint(0, len(newMatchData.bantzStrings.teamDrew ) - 1)].format(**teamDict)
-                else:
-                    if newMatchData.matchChanges.firstHalfStarted:
-                        message = newMatchData.bantzStrings.teamMatchStarted[random.randint(0, len(newMatchData.bantzStrings.teamMatchStarted ) - 1)].format(**teamDict)
-                    elif newMatchData.matchChanges.goalScored:
-                        # Check for a goal
-                        match newMatchData.matchState:
-                            case Drawing():
-                                message = newMatchData.bantzStrings.drawing[random.randint(0, len(newMatchData.bantzStrings.drawing) - 1)].format(**teamDict)
-                            case TeamLeadByOne():
-                                message = newMatchData.bantzStrings.teamLeadByOne[random.randint(0, len(newMatchData.bantzStrings.teamLeadByOne) - 1)].format(**teamDict)
-                            case TeamExtendingLead():
-                                message = newMatchData.bantzStrings.teamExtendingLead[random.randint(0, len(newMatchData.bantzStrings.teamExtendingLead) - 1)].format(**teamDict)
-                            case TeamLosingLead():
-                                message = newMatchData.bantzStrings.teamLosingLead[random.randint(0, len(newMatchData.bantzStrings.teamLosingLead) - 1)].format(**teamDict)
-                            case TeamDeficitOfOne():
-                                message = newMatchData.bantzStrings.teamDeficitOfOne[random.randint(0, len(newMatchData.bantzStrings.teamDeficitOfOne) - 1)].format(**teamDict)
-                            case TeamExtendingDeficit():
-                                message = newMatchData.bantzStrings.teamExtendingDeficit[random.randint(0, len(newMatchData.bantzStrings.teamExtendingDeficit) - 1)].format(**teamDict)
-                            case TeamLosingDeficit():
-                                message = newMatchData.bantzStrings.teamLosingDeficit[random.randint(0, len(newMatchData.bantzStrings.teamLosingDeficit) - 1)].format(**teamDict)
+                    # Check if this is the start of the match
+                    if newMatchData.matchChanges.fullTime:
+                        # Send final score
+                        message = str(newMatchData)
+                    else:
+                        requestUpdates = True
+                        if newMatchData.matchChanges.firstHalfStarted:
+                            # Send match started
+                            message = str(newMatchData)
+                        elif newMatchData.matchChanges.goalScored:
+                            # Send score update
+                            message = str(newMatchData)
 
-                    # Add a job to check the scores again in 20 seconds
-                    self.jq.run_once(self.SendScoreUpdates, 20, context=newMatchData)
+                    # Send the message
+                    self.SendMessage(context.bot, message)
 
-                # If there is a message, add the scoreline
-                if message is not None:
-                    message = f'{message}'
-
-                self.SendMessage(context.bot, message)
+                if requestUpdates:
+                    # Add a job to check the scores again in 10 seconds
+                    self.jq.run_once(self.SendScoreUpdates, 10, context=newMatchList)
             else:
                 # This update failed, try again in 20 seconds using the old match data as the context
-                self.jq.run_once(self.SendScoreUpdates, 20, context=oldMatchData)
+                self.jq.run_once(self.SendScoreUpdates, 20, context=oldMatchList)
         else:
             return
-
-    def SendEmptySeats(self, context: CallbackContext) -> None:
-        if  context.job is not None and isinstance(context.job.context, str):
-            # Get the full team name
-            team = context.job.context
-
-            # Get the ground for this tean
-            ground = allTeams[team]['ground'] if team in allTeams else None
-
-            if ground is not None:
-                # Send the message
-                self.SendMessage(context.bot, f'Plenty of empty seats at {ground}')
-
-    def SendEasyWin(self, context: CallbackContext) -> None:
-        if  context.job is not None and isinstance(context.job.context, str):
-            # Get the full name for this team
-            team = context.job.context
-
-            # Get the shorter name for this team
-            teamName = allTeams[team]['team'] if team in allTeams else team
-
-            # Send easy win if not supported, tough game if supported
-            if team in supportedTeamMapping:
-                # Send the message
-                self.SendMessage(context.bot, f'Should be an easy win for {teamName}')
-            else:
-                # Send the message
-                self.SendMessage(context.bot, f'{teamName} will probably lose today')
 
     # Log errors
     def error(self, update, context: CallbackContext) -> None:

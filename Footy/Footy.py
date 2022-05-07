@@ -33,7 +33,7 @@ class Footy:
                 print(response.content)
                 return
 
-    def GetMatches(self, dateFrom: Optional[date] = None, dateTo: Optional[date] = None) -> Optional[list[Match]]:
+    def GetMatches(self, dateFrom: Optional[date] = None, dateTo: Optional[date] = None, oldMatchList: Optional[list[Match]] = None) -> Optional[list[Match]]:
         # Initialise an empty list of matches
         matchList: list[Match] = []
 
@@ -47,29 +47,20 @@ class Footy:
         try:
             # Get the Premier League games
             pLresponse = requests.get(f'https://api.football-data.org//v2/competitions/2021/matches/?dateFrom={dateFrom}&dateTo={dateTo}', headers=HEADERS)
-
-            # Get the Champions League games
-            cLResponse = requests.get(f'https://api.football-data.org//v2/competitions/2001/matches/?dateFrom={dateFrom}&dateTo={dateTo}', headers=HEADERS)
         except:
             # In case of download failure return None to allow a retry
             print('Could not download data')
             return None
 
         # Get the list of Premier League matches and extend the list if not None
-        if (plMatchList := self.GetCompetitionMatchData(pLresponse)) != None:
+        if (plMatchList := self.GetCompetitionMatchData(pLresponse, oldMatchList)) != None:
             matchList.extend(plMatchList)
-        else:
-            return None
-
-        # Get the list of Champions League matches and extend the list if not None
-        if (clMatchList := self.GetCompetitionMatchData(cLResponse)) != None:
-            matchList.extend(clMatchList)
         else:
             return None
 
         return matchList
 
-    def GetCompetitionMatchData(self, response: Response) -> Optional[list[Match]]:
+    def GetCompetitionMatchData(self, response: Response, oldMatchList: Optional[list[Match]] = None) -> Optional[list[Match]]:
         # Initialise an empty list of matches
         matchList: list[Match] = []
 
@@ -79,17 +70,27 @@ class Footy:
             data = response.json()
 
             # Set the competition name
-            competiton = data['competition']['name']
+            competition = data['competition']['name']
 
             # Iterate over the matches
             for matchData in data['matches']:
-                # Turn the response into a match type
-                match = Match(matchData, competiton)
+                # Find the old match that is the same as this one
+                if oldMatchList:
+                    for oldMatch in oldMatchList:
+                        if oldMatch.id == matchData['id']:
+                            # Turn the response into a match type
+                            match = Match(matchData, competition, oldMatch)
+                            break
+                    else:
+                        match = Match(matchData, competition)
+                else:
+                    # Turn the response into a match type
+                    match = Match(matchData, competition)
 
                 # If the match involves one of the teams we're interested in append it to the match list
                 if match.homeTeam in self.teams or match.awayTeam in self.teams:
                     # Check that the match may be on today
-                    if match.status in MatchStatus.matchToBePlayedList:
+                    if match.status in MatchStatus.matchToBeCheckedList:
                         matchList.append(match)
 
             # Return the match list

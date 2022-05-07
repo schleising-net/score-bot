@@ -9,4 +9,4 @@ finished = 'FINISHED'
 
 matchToBePlayedList = [scheduled, suspended, paused, inPlay]
 matchInProgressList = [inPlay, paused]
-matchToBeCheckedList = matchToBePlayedList.append(finished)
+matchToBeCheckedList = matchToBePlayedList + [finished]
